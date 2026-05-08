@@ -4,7 +4,8 @@ const cors = require('cors')
 const { GoogleGenerativeAI } = require('@google/generative-ai')
 
 const app = express()
-app.use(cors({ origin: '*' }))
+app.use(cors())
+app.options('*', cors())
 app.use(express.json())
 
 const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
