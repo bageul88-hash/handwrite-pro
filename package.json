@@ -1,0 +1,20 @@
+{
+  "name": "handwrite-pro",
+  "version": "1.0.0",
+  "description": "글씨교정 AI 웹앱·모바일·관리자",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"cd web && npm run dev\" \"cd admin && npm run dev\" \"cd server && npm run dev\"",
+    "web": "cd web && npm run dev",
+    "admin": "cd admin && npm run dev",
+    "server": "cd server && npm run dev",
+    "mobile": "cd mobile && npx expo start"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
