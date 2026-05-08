@@ -158,9 +158,21 @@ export default function App() {
                 style={{ width: '100%', height: 200, padding: 12, borderRadius: 8, border: '1px solid #ddd',
                   fontFamily: 'monospace', fontSize: 13, resize: 'vertical', lineHeight: 1.6 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                <button style={{ padding: '8px 16px', background: '#534AB7', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+                <button onClick={async () => {
+                  try {
+                    const res = await fetch('https://handwrite-pro-production.up.railway.app/admin/prompt', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ prompt })
+                    })
+                    const data = await res.json()
+                    if (data.success) alert('✅ 저장 완료!')
+                    else alert('❌ 저장 실패: ' + data.error)
+                  } catch { alert('❌ 서버 연결 실패') }
+                }} style={{ padding: '8px 16px', background: '#534AB7', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
                   저장하기
                 </button>
+                
                 <button style={{ padding: '8px 16px', background: '#f5f5f5', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
                   테스트
                 </button>
