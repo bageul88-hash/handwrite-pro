@@ -160,7 +160,7 @@ export default function App() {
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                 <button onClick={async () => {
                   try {
-                    const res = await fetch('https://handwrite-pro-production.up.railway.app/admin/prompt', {
+                    const res = await fetch('https://handwrite-pro.onrender.com/admin/prompt', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ prompt })
