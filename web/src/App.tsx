@@ -29,7 +29,7 @@ export default function App() {
     setLoading(true)
     setCredits(c => c - 1)
     try {
-      const res = await fetch('https://handwrite-pro.onrender.com', {
+      const res = await fetch('https://handwrite-pro.onrender.com/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ grade, type, topics: selectedTopics, audience: '학부형' })
