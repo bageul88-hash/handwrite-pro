@@ -72,6 +72,7 @@ app.post('/generate', async (req, res) => {
       .replace('{type}', type)
       .replace('{topics}', topics.join(', '))
       .replace('{audience}', audience)
+    console.log('📝 Gemini 전달 프롬프트 (앞 100자):', prompt.slice(0, 100))
     const result = await model.generateContent(prompt)
     res.json({ success: true, content: result.response.text() })
   } catch(e) {
