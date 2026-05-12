@@ -65,7 +65,7 @@ app.get('/', (req, res) => {
 app.post('/generate', async (req, res) => {
   const { grade, type, topics, audience = '학부형' } = req.body
   try {
-    const model = genai.getGenerativeModel({ model: 'gemini-2.0-flash' })
+    const model = genai.getGenerativeModel({ model: 'gemini-2.5-flash' })
     const template = await getPrompt()
     const prompt = template
       .replace('{grade}', grade)
