@@ -7,7 +7,9 @@ const { GoogleGenerativeAI } = require('@google/generative-ai')
 const app = express()
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || origin.endsWith('.vercel.app') || origin === 'https://handwrite-pro.onrender.com') {
+    if (!origin || origin.endsWith('.vercel.app') ||
+        origin === 'https://handwrite-pro.onrender.com' ||
+        origin === 'https://handwrite-pro-production.up.railway.app') {
       callback(null, true)
     } else {
       callback(new Error('Not allowed by CORS'))
