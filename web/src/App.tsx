@@ -1,160 +1,251 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 
-const grades = ['초1-2', '초3-4', '초5-6', '중등', '성인']
+const SERVER = 'https://handwrite-pro.onrender.com'
+const PRIMARY = '#534AB7'
+const LIGHT = '#EEEDFE'
+const BORDER = '#AFA9EC'
+
+const genders = ['남', '여']
+const grades = ['6-7세', '초1-2', '초3-4', '초5-6', '중등', '성인', '2차 준졸고사']
 const types = ['한글', '영어', '숫자']
 const topics = ['악필 교정', '집필 자세', '손목·팔뚝', '허리·어깨', '뇌과학', '손 촉각']
-const packages = [
-  { credits: 7,  price: 5900,  per: '₩843', label: '첫 구매 추천' },
-  { credits: 24, price: 15900, per: '₩663', label: '가장 인기' },
-  { credits: 48, price: 26900, per: '₩561', label: '최고 가성비' },
-]
-declare global { interface Window { IMP: any } }
+
+function chip(active: boolean, disabled = false) {
+  return {
+    padding: '7px 16px', borderRadius: 20, border: '1px solid',
+    fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
+    fontFamily: 'sans-serif',
+    background: active ? PRIMARY : '#fff',
+    color: active ? '#fff' : disabled ? '#bbb' : '#555',
+    borderColor: active ? PRIMARY : disabled ? '#eee' : '#ddd',
+    opacity: disabled ? 0.5 : 1,
+    transition: 'all 0.15s',
+  } as React.CSSProperties
+}
+
+function label(text: string, sub?: string) {
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <span style={{ fontSize: 13, fontWeight: 600, color: '#444' }}>{text}</span>
+      {sub && <span style={{ fontSize: 12, color: '#999', marginLeft: 6 }}>{sub}</span>}
+    </div>
+  )
+}
+
+// 결과 섹션 파싱 (## 헤더 기준 분리)
+function parseResult(text: string) {
+  const parts = text.split(/(?=^## )/m)
+  const intro = parts[0].trim()
+  const sections = parts.slice(1).map(s => {
+    const lines = s.split('\n')
+    const title = lines[0].replace(/^## /, '').trim()
+    const body = lines.slice(1).join('\n').trim()
+    return { title, body }
+  })
+  return { intro, sections }
+}
 
 export default function App() {
+  const [gender, setGender] = useState('남')
   const [grade, setGrade] = useState('초1-2')
   const [type, setType] = useState('한글')
-  const [selectedTopics, setSelectedTopics] = useState<string[]>(['악필 교정'])
-  const [result, setResult] = useState('')
+  const [selectedTopics, setSelectedTopics] = useState<string[]>([])
+  const [photos, setPhotos] = useState<Record<string, File>>({})
+  const [previews, setPreviews] = useState<Record<string, string>>({})
+  const [result, setResult] = useState<{ intro: string; sections: { title: string; body: string }[] } | null>(null)
   const [loading, setLoading] = useState(false)
-  const [credits, setCredits] = useState(1)
-  const [showPricing, setShowPricing] = useState(false)
-  const [selectedPkg, setSelectedPkg] = useState(24)
-  const [payLoading, setPayLoading] = useState(false)
+  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
-  const toggleTopic = (t: string) =>
-    setSelectedTopics(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
-
-  const generate = async () => {
-    if (credits <= 0) { setShowPricing(true); return }
-    setLoading(true)
-    setCredits(c => c - 1)
-    try {
-      const res = await fetch('https://handwrite-pro.onrender.com/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ grade, type, topics: selectedTopics, audience: '학부형' })
-      })
-      const data = await res.json()
-      if (data.success) setResult(data.content)
-      else alert('생성 실패: ' + data.error)
-    } catch { alert('서버 연결 실패.') }
-    finally { setLoading(false) }
-  }
-
-  const handlePayment = () => {
-    const pkg = packages.find(p => p.credits === selectedPkg)!
-    setPayLoading(true)
-    window.IMP.init('imp74368265')
-    window.IMP.request_pay({
-      pg: 'html5_inicis', pay_method: 'card',
-      merchant_uid: `handwrite_${Date.now()}`,
-      name: `글씨교정 AI ${pkg.credits}회 크레딧`,
-      amount: pkg.price, buyer_name: '구매자',
-    }, async (rsp: any) => {
-      if (rsp.success) {
-        const res = await fetch('https://handwrite-pro.onrender.com/payment/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imp_uid: rsp.imp_uid, credits: pkg.credits })
-        })
-        const data = await res.json()
-        if (data.success) { setCredits(c => c + data.credits); setShowPricing(false); alert(`✅ ${data.credits}회 충전!`) }
-      } else { alert('결제 실패: ' + rsp.error_msg) }
-      setPayLoading(false)
+  const toggleTopic = (t: string) => {
+    setSelectedTopics(prev => {
+      if (prev.includes(t)) {
+        setPhotos(p => { const n = { ...p }; delete n[t]; return n })
+        setPreviews(p => { const n = { ...p }; delete n[t]; return n })
+        return prev.filter(x => x !== t)
+      }
+      if (prev.length >= 3) return prev
+      return [...prev, t]
     })
   }
 
+  const handlePhoto = (topic: string, file: File) => {
+    setPhotos(prev => ({ ...prev, [topic]: file }))
+    const url = URL.createObjectURL(file)
+    setPreviews(prev => ({ ...prev, [topic]: url }))
+  }
+
+  const generate = async () => {
+    if (selectedTopics.length === 0) { alert('교정 주제를 1개 이상 선택해주세요.'); return }
+    setLoading(true)
+    setResult(null)
+    try {
+      const form = new FormData()
+      form.append('gender', gender)
+      form.append('grade', grade)
+      form.append('type', type)
+      selectedTopics.forEach(t => form.append('topics', t))
+      selectedTopics.forEach(t => { if (photos[t]) form.append(`photo_${t}`, photos[t]) })
+
+      const res = await fetch(`${SERVER}/generate`, { method: 'POST', body: form })
+      const data = await res.json()
+      if (data.success) setResult(parseResult(data.content))
+      else alert('생성 실패: ' + data.error)
+    } catch { alert('서버 연결 실패. 잠시 후 다시 시도해주세요.') }
+    finally { setLoading(false) }
+  }
+
+  const fullText = result
+    ? [result.intro, ...result.sections.map(s => `## ${s.title}\n${s.body}`)].join('\n\n')
+    : ''
+
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '2rem 1rem', fontFamily: 'sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, margin: 0, color: '#534AB7' }}>글씨교정 AI</h1>
-          <p style={{ fontSize: 13, color: '#888', margin: '4px 0 0' }}>뇌과학 · 자세 · 집필 통합 교정 솔루션</p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <div style={{ background: '#EEEDFE', borderRadius: 20, padding: '6px 14px', fontSize: 13, color: '#534AB7', fontWeight: 500 }}>크레딧 {credits}회</div>
-          <button onClick={() => setShowPricing(!showPricing)}
-            style={{ padding: '6px 14px', background: '#534AB7', color: '#fff', border: 'none', borderRadius: 20, fontSize: 13, cursor: 'pointer' }}>
-            💳 충전
-          </button>
-        </div>
+    <div style={{ maxWidth: 740, margin: '0 auto', padding: '2rem 1rem', fontFamily: 'sans-serif', color: '#222' }}>
+
+      {/* 헤더 */}
+      <div style={{ marginBottom: '1.75rem' }}>
+        <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: PRIMARY }}>글씨교정 AI</h1>
+        <p style={{ fontSize: 13, color: '#999', margin: '5px 0 0' }}>뇌과학 · 자세 · 집필 통합 교정 솔루션 by pentwo</p>
       </div>
 
-      {showPricing && (
-        <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: 12, padding: '1.25rem', marginBottom: '1rem' }}>
-          <div style={{ fontSize: 16, fontWeight: 600, color: '#534AB7', marginBottom: '1rem', textAlign: 'center' }}>크레딧 충전</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: '1rem' }}>
-            {packages.map(pkg => (
-              <div key={pkg.credits} onClick={() => setSelectedPkg(pkg.credits)}
-                style={{ border: selectedPkg === pkg.credits ? '2px solid #534AB7' : '1px solid #eee',
-                  borderRadius: 10, padding: '0.875rem', cursor: 'pointer', textAlign: 'center' }}>
-                <div style={{ fontSize: 11, background: '#EEEDFE', color: '#534AB7', borderRadius: 10, padding: '2px 8px', marginBottom: 6, display: 'inline-block' }}>{pkg.label}</div>
-                <div style={{ fontSize: 24, fontWeight: 600 }}>{pkg.credits}<span style={{ fontSize: 13, color: '#888' }}>회</span></div>
-                <div style={{ fontSize: 16, fontWeight: 600, marginTop: 4 }}>₩{pkg.price.toLocaleString()}</div>
-                <div style={{ fontSize: 11, color: '#0F6E56' }}>회당 {pkg.per}</div>
-              </div>
+      {/* 선택 폼 */}
+      <div style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 14, padding: '1.5rem', marginBottom: '1rem', boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
+
+        {/* 성별 */}
+        <div style={{ marginBottom: '1.25rem' }}>
+          {label('성별')}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {genders.map(g => (
+              <button key={g} onClick={() => setGender(g)} style={chip(gender === g)}>{g}</button>
             ))}
           </div>
-          <button onClick={handlePayment} disabled={payLoading}
-            style={{ width: '100%', padding: 12, background: payLoading ? '#aaa' : '#534AB7',
-              color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-            {payLoading ? '결제 처리 중...' : `💳 ${selectedPkg}회 결제 (₩${packages.find(p=>p.credits===selectedPkg)!.price.toLocaleString()})`}
-          </button>
         </div>
-      )}
 
-      <div style={{ background: '#fff', border: '1px solid #e5e5e5', borderRadius: 12, padding: '1.25rem', marginBottom: '1rem' }}>
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ fontSize: 13, color: '#666', display: 'block', marginBottom: 6 }}>학년 선택</label>
+        {/* 학년 */}
+        <div style={{ marginBottom: '1.25rem' }}>
+          {label('학년 선택')}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {grades.map(g => (
-              <button key={g} onClick={() => setGrade(g)}
-                style={{ padding: '6px 14px', borderRadius: 20, border: '1px solid', fontSize: 13, cursor: 'pointer',
-                  background: grade===g?'#534AB7':'#fff', color: grade===g?'#fff':'#666', borderColor: grade===g?'#534AB7':'#ddd' }}>{g}</button>
+              <button key={g} onClick={() => setGrade(g)} style={chip(grade === g)}>{g}</button>
             ))}
           </div>
         </div>
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ fontSize: 13, color: '#666', display: 'block', marginBottom: 6 }}>글씨 유형</label>
+
+        {/* 글씨 유형 */}
+        <div style={{ marginBottom: '1.25rem' }}>
+          {label('글씨 유형')}
           <div style={{ display: 'flex', gap: 8 }}>
             {types.map(t => (
-              <button key={t} onClick={() => setType(t)}
-                style={{ padding: '6px 14px', borderRadius: 20, border: '1px solid', fontSize: 13, cursor: 'pointer',
-                  background: type===t?'#534AB7':'#fff', color: type===t?'#fff':'#666', borderColor: type===t?'#534AB7':'#ddd' }}>{t}</button>
+              <button key={t} onClick={() => setType(t)} style={chip(type === t)}>{t}</button>
             ))}
           </div>
         </div>
-        <div style={{ marginBottom: '1.25rem' }}>
-          <label style={{ fontSize: 13, color: '#666', display: 'block', marginBottom: 6 }}>교정 주제 (복수 선택)</label>
+
+        {/* 교정 주제 */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          {label('교정 주제', `(최대 3개 · ${selectedTopics.length}/3 선택됨)`)}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {topics.map(t => (
-              <button key={t} onClick={() => toggleTopic(t)}
-                style={{ padding: '6px 14px', borderRadius: 20, border: '1px solid', fontSize: 13, cursor: 'pointer',
-                  background: selectedTopics.includes(t)?'#EEEDFE':'#fff',
-                  color: selectedTopics.includes(t)?'#534AB7':'#666',
-                  borderColor: selectedTopics.includes(t)?'#534AB7':'#ddd' }}>{t}</button>
-            ))}
+            {topics.map(t => {
+              const active = selectedTopics.includes(t)
+              const disabled = !active && selectedTopics.length >= 3
+              return (
+                <button key={t} onClick={() => !disabled && toggleTopic(t)} style={chip(active, disabled)}>{t}</button>
+              )
+            })}
           </div>
         </div>
-        <button onClick={generate} disabled={loading}
-          style={{ width: '100%', padding: '12px', background: loading?'#aaa':'#534AB7',
-            color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: loading?'not-allowed':'pointer' }}>
-          {loading ? '✨ AI 생성 중...' : '✨ AI 콘텐츠 생성하기'}
+
+        {/* 주제별 사진 업로드 카드 */}
+        {selectedTopics.length > 0 && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            {label('주제별 사진 업로드', '(선택 — 사진 첨부 시 더 정확한 분석)')}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
+              {selectedTopics.map(topic => (
+                <div key={topic} style={{
+                  border: `1.5px solid ${previews[topic] ? BORDER : '#e0e0e0'}`,
+                  borderRadius: 10, padding: '0.875rem', textAlign: 'center',
+                  background: previews[topic] ? LIGHT : '#fafafa'
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: PRIMARY, marginBottom: 8 }}>{topic}</div>
+                  {previews[topic] ? (
+                    <>
+                      <img src={previews[topic]} alt={topic}
+                        style={{ width: '100%', height: 90, objectFit: 'cover', borderRadius: 6, marginBottom: 6 }} />
+                      <button onClick={() => fileRefs.current[topic]?.click()}
+                        style={{ fontSize: 11, color: '#888', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                        사진 변경
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => fileRefs.current[topic]?.click()}
+                      style={{ width: '100%', height: 80, background: '#fff', border: '1.5px dashed #ccc', borderRadius: 8, cursor: 'pointer', fontSize: 12, color: '#aaa' }}>
+                      📷 사진 선택
+                    </button>
+                  )}
+                  <input
+                    ref={el => { fileRefs.current[topic] = el }}
+                    type="file" accept="image/*" style={{ display: 'none' }}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handlePhoto(topic, f) }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 제출 버튼 */}
+        <button onClick={generate} disabled={loading || selectedTopics.length === 0}
+          style={{
+            width: '100%', padding: '14px', borderRadius: 10, border: 'none', fontSize: 15,
+            fontWeight: 700, cursor: loading || selectedTopics.length === 0 ? 'not-allowed' : 'pointer',
+            background: loading || selectedTopics.length === 0 ? '#bbb' : PRIMARY,
+            color: '#fff', letterSpacing: '0.3px', transition: 'background 0.2s'
+          }}>
+          {loading ? '✨ AI 분석 중...' : '✨ pentwo를 통해 교정하기'}
         </button>
+        {selectedTopics.length === 0 && (
+          <p style={{ textAlign: 'center', fontSize: 12, color: '#bbb', margin: '8px 0 0' }}>교정 주제를 선택하면 버튼이 활성화됩니다</p>
+        )}
       </div>
 
+      {/* 결과 영역 */}
       {result && (
-        <div style={{ background: '#EEEDFE', border: '1px solid #AFA9EC', borderRadius: 12, padding: '1.25rem' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#534AB7', marginBottom: 8 }}>생성된 콘텐츠</div>
-          <pre style={{ fontSize: 13, color: '#3C3489', lineHeight: 1.7, whiteSpace: 'pre-wrap', margin: 0 }}>{result}</pre>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            {['복사', '공유', '저장', '재생성'].map(btn => (
-              <button key={btn}
-                onClick={() => btn==='복사'?navigator.clipboard.writeText(result):btn==='재생성'?generate():null}
-                style={{ flex: 1, padding: '7px', background: '#fff', border: '1px solid #AFA9EC',
-                  borderRadius: 8, fontSize: 12, color: '#534AB7', cursor: 'pointer' }}>{btn}</button>
+        <div style={{ background: '#fff', border: `1.5px solid ${BORDER}`, borderRadius: 14, padding: '1.5rem', boxShadow: '0 1px 6px rgba(83,74,183,0.08)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: PRIMARY }}>AI 교정 결과</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => navigator.clipboard.writeText(fullText)}
+                style={{ padding: '5px 12px', background: LIGHT, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 12, color: PRIMARY, cursor: 'pointer' }}>복사</button>
+              <button onClick={() => window.print()}
+                style={{ padding: '5px 12px', background: LIGHT, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 12, color: PRIMARY, cursor: 'pointer' }}>인쇄</button>
+              <button onClick={generate}
+                style={{ padding: '5px 12px', background: PRIMARY, border: 'none', borderRadius: 6, fontSize: 12, color: '#fff', cursor: 'pointer' }}>재생성</button>
+            </div>
+          </div>
+
+          {/* 요약 태그 */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+            {[gender, grade, type, ...selectedTopics].map(tag => (
+              <span key={tag} style={{ background: LIGHT, color: PRIMARY, padding: '3px 10px', borderRadius: 10, fontSize: 12, fontWeight: 500 }}>{tag}</span>
             ))}
           </div>
+
+          {/* 인트로 */}
+          {result.intro && (
+            <p style={{ fontSize: 13, color: '#555', lineHeight: 1.7, marginBottom: 16 }}>{result.intro}</p>
+          )}
+
+          {/* 주제별 섹션 카드 */}
+          {result.sections.map((sec, i) => (
+            <div key={i} style={{ background: LIGHT, borderRadius: 10, padding: '1rem 1.25rem', marginBottom: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: PRIMARY, marginBottom: 8 }}>{sec.title}</div>
+              <pre style={{ fontSize: 13, color: '#3C3489', lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>{sec.body}</pre>
+            </div>
+          ))}
+
+          {/* 섹션 없이 전체 텍스트만 있을 때 */}
+          {result.sections.length === 0 && (
+            <pre style={{ fontSize: 13, color: '#3C3489', lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>{result.intro}</pre>
+          )}
         </div>
       )}
     </div>
