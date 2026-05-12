@@ -29,7 +29,7 @@ export default function App() {
     setLoading(true)
     setCredits(c => c - 1)
     try {
-      const res = await fetch('https://handwrite-pro-production.up.railway.app', {
+      const res = await fetch('https://handwrite-pro.onrender.com', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ grade, type, topics: selectedTopics, audience: '학부형' })
@@ -52,7 +52,7 @@ export default function App() {
       amount: pkg.price, buyer_name: '구매자',
     }, async (rsp: any) => {
       if (rsp.success) {
-        const res = await fetch('https://handwrite-pro-production.up.railway.app/payment/verify', {
+        const res = await fetch('https://handwrite-pro.onrender.com/payment/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imp_uid: rsp.imp_uid, credits: pkg.credits })
