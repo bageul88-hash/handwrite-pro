@@ -5,10 +5,13 @@ const { GoogleGenerativeAI } = require('@google/generative-ai')
 
 const app = express()
 const corsOptions = {
-  origin: [
-    'https://admin-lilac-ten-17.vercel.app',
-    'https://handwrite-pro.onrender.com',
-  ],
+  origin: (origin, callback) => {
+    if (!origin || origin.endsWith('.vercel.app') || origin === 'https://handwrite-pro.onrender.com') {
+      callback(null, true)
+    } else {
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
   optionsSuccessStatus: 200,
 }
 app.use(cors(corsOptions))
