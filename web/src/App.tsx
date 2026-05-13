@@ -111,7 +111,7 @@ export default function App() {
       <div style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 14, padding: '1.5rem', marginBottom: '1rem', boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
 
         {/* 성별 */}
-        <div style={{ marginBottom: '1.25rem' }}>
+        <div style={{ marginBottom: '1.25rem', textAlign: 'left' }}>
           {label('성별')}
           <div style={{ display: 'flex', gap: 8 }}>
             {genders.map(g => (
@@ -121,7 +121,7 @@ export default function App() {
         </div>
 
         {/* 학년 */}
-        <div style={{ marginBottom: '1.25rem' }}>
+        <div style={{ marginBottom: '1.25rem', textAlign: 'left' }}>
           {label('학년 선택')}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {grades.map(g => (
@@ -131,7 +131,7 @@ export default function App() {
         </div>
 
         {/* 글씨 유형 */}
-        <div style={{ marginBottom: '1.25rem' }}>
+        <div style={{ marginBottom: '1.25rem', textAlign: 'left' }}>
           {label('글씨 유형')}
           <div style={{ display: 'flex', gap: 8 }}>
             {types.map(t => (
