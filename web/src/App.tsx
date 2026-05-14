@@ -1,279 +1,236 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import './App.css'
+import { gradeGuides } from './data/gradeGuides'
+import TopBar from './components/TopBar'
+import PillSelector from './components/PillSelector'
+import GradeSelector, { gradeMap } from './components/GradeSelector'
+import TopicSelector from './components/TopicSelector'
+import PhotoUploadCard from './components/PhotoUploadCard'
+import SubmitButton from './components/SubmitButton'
+import ResultCard from './components/ResultCard'
 
 const SERVER = 'https://handwrite-pro.onrender.com'
-const PRIMARY = '#534AB7'
-const LIGHT = '#EEEDFE'
-const BORDER = '#AFA9EC'
 
-const genders = ['남', '여']
-const gradeMap: Record<string, string[]> = {
-  '유치원':      ['5세(만3세)', '6세(만4세)', '7세(만5세)'],
-  '초등':        ['초1', '초2', '초3', '초4', '초5', '초6'],
-  '중등':        ['중1', '중2', '중3'],
-  '고등':        ['고1', '고2', '고3'],
-  '대학':        ['대학1년', '대학2년', '대학3년', '대학4년'],
-  '일반인':      ['20대', '30대', '40대', '50대', '60대 이상'],
-  '2차 논술고사': ['준비 시작', '6개월 이내', '시험 임박'],
-}
-const gradeCategories = Object.keys(gradeMap)
-const types = ['한글', '영어', '숫자']
-const topics = ['악필 교정', '집필 자세', '손목·팔뚝', '허리·어깨', '뇌과학', '손 촉각']
-
-function chip(active: boolean, disabled = false) {
-  return {
-    padding: '7px 16px', borderRadius: 20, border: '1px solid',
-    fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
-    fontFamily: 'sans-serif',
-    background: active ? PRIMARY : '#fff',
-    color: active ? '#fff' : disabled ? '#bbb' : '#555',
-    borderColor: active ? PRIMARY : disabled ? '#eee' : '#ddd',
-    opacity: disabled ? 0.5 : 1,
-    transition: 'all 0.15s',
-  } as React.CSSProperties
+function guideKey(cat: string): string {
+  if (cat === '2차논술고사') return '2차논술'
+  return cat
 }
 
-function label(text: string, sub?: string) {
-  return (
-    <div style={{ marginBottom: 8 }}>
-      <span style={{ fontSize: 13, fontWeight: 600, color: '#444' }}>{text}</span>
-      {sub && <span style={{ fontSize: 12, color: '#999', marginLeft: 6 }}>{sub}</span>}
-    </div>
-  )
-}
-
-// 결과 섹션 파싱 (## 헤더 기준 분리)
-function parseResult(text: string) {
-  const parts = text.split(/(?=^## )/m)
-  const intro = parts[0].trim()
-  const sections = parts.slice(1).map(s => {
-    const lines = s.split('\n')
-    const title = lines[0].replace(/^## /, '').trim()
-    const body = lines.slice(1).join('\n').trim()
-    return { title, body }
-  })
-  return { intro, sections }
+interface FormState {
+  gender: '남' | '여'
+  gradeCategory: string
+  subGrade: string
+  scriptType: string
+  topics: string[]
+  photos: Record<string, File>
 }
 
 export default function App() {
-  const [gender, setGender] = useState('남')
-  const [gradeCategory, setGradeCategory] = useState('초등')
-  const [grade, setGrade] = useState('초1')
-  const [type, setType] = useState('한글')
-  const [selectedTopics, setSelectedTopics] = useState<string[]>([])
-  const [photos, setPhotos] = useState<Record<string, File>>({})
+  const [form, setForm] = useState<FormState>({
+    gender: '남',
+    gradeCategory: '초등',
+    subGrade: '1학년',
+    scriptType: '한글',
+    topics: [],
+    photos: {},
+  })
   const [previews, setPreviews] = useState<Record<string, string>>({})
-  const [result, setResult] = useState<{ intro: string; sections: { title: string; body: string }[] } | null>(null)
   const [loading, setLoading] = useState(false)
-  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const [aiIntro, setAiIntro] = useState<string | undefined>(undefined)
+  const [showResult, setShowResult] = useState(false)
+  const resultRef = useRef<HTMLDivElement>(null)
 
-  const handleGradeCategory = (cat: string) => {
-    setGradeCategory(cat)
-    setGrade(gradeMap[cat][0])
+  const setGender = (g: string) =>
+    setForm(f => ({ ...f, gender: g as '남' | '여' }))
+
+  const setGradeCategory = (cat: string) => {
+    const subs = gradeMap[cat] ?? []
+    setForm(f => ({ ...f, gradeCategory: cat, subGrade: subs[0] ?? '' }))
   }
 
-  const toggleTopic = (t: string) => {
-    setSelectedTopics(prev => {
-      if (prev.includes(t)) {
-        setPhotos(p => { const n = { ...p }; delete n[t]; return n })
-        setPreviews(p => { const n = { ...p }; delete n[t]; return n })
-        return prev.filter(x => x !== t)
-      }
-      if (prev.length >= 3) return prev
-      return [...prev, t]
+  const setSubGrade = (sub: string) => setForm(f => ({ ...f, subGrade: sub }))
+
+  const setScriptType = (t: string) => setForm(f => ({ ...f, scriptType: t }))
+
+  const setTopics = (topics: string[]) => {
+    const removed = form.topics.filter(t => !topics.includes(t))
+    setForm(f => {
+      const newPhotos = { ...f.photos }
+      removed.forEach(t => delete newPhotos[t])
+      return { ...f, topics, photos: newPhotos }
     })
+    if (removed.length > 0) {
+      setPreviews(p => {
+        const n = { ...p }
+        removed.forEach(t => delete n[t])
+        return n
+      })
+    }
   }
 
   const handlePhoto = (topic: string, file: File) => {
-    setPhotos(prev => ({ ...prev, [topic]: file }))
-    const url = URL.createObjectURL(file)
-    setPreviews(prev => ({ ...prev, [topic]: url }))
+    setForm(f => ({ ...f, photos: { ...f.photos, [topic]: file } }))
+    setPreviews(p => ({ ...p, [topic]: URL.createObjectURL(file) }))
   }
 
   const generate = async () => {
-    if (selectedTopics.length === 0) { alert('교정 주제를 1개 이상 선택해주세요.'); return }
+    if (form.topics.length === 0) {
+      alert('교정 주제를 1개 이상 선택해주세요.')
+      return
+    }
     setLoading(true)
-    setResult(null)
+    setShowResult(false)
+    setAiIntro(undefined)
     try {
-      const form = new FormData()
-      form.append('gender', gender)
-      form.append('grade', `${gradeCategory} ${grade}`)
-      form.append('type', type)
-      selectedTopics.forEach(t => form.append('topics', t))
-      selectedTopics.forEach(t => { if (photos[t]) form.append(`photo_${t}`, photos[t]) })
-
-      const res = await fetch(`${SERVER}/generate`, { method: 'POST', body: form })
+      const fd = new FormData()
+      fd.append('gender', form.gender)
+      fd.append('grade', `${form.gradeCategory} ${form.subGrade}`)
+      fd.append('type', form.scriptType)
+      form.topics.forEach(t => fd.append('topics', t))
+      form.topics.forEach(t => {
+        if (form.photos[t]) fd.append(`photo_${t}`, form.photos[t])
+      })
+      const res = await fetch(`${SERVER}/generate`, { method: 'POST', body: fd })
       const data = await res.json()
-      if (data.success) setResult(parseResult(data.content))
-      else alert('생성 실패: ' + data.error)
-    } catch { alert('서버 연결 실패. 잠시 후 다시 시도해주세요.') }
-    finally { setLoading(false) }
+      if (data.success) {
+        const firstLine = (data.content as string)
+          .split('\n')
+          .find((l: string) => l.trim() && !l.startsWith('#'))
+        setAiIntro(firstLine?.trim() ?? undefined)
+      }
+    } catch {
+      // 서버 실패 시 정적 가이드만 표시
+    } finally {
+      setLoading(false)
+      setShowResult(true)
+    }
   }
 
-  const fullText = result
-    ? [result.intro, ...result.sections.map(s => `## ${s.title}\n${s.body}`)].join('\n\n')
-    : ''
+  useEffect(() => {
+    if (showResult && resultRef.current) {
+      resultRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [showResult])
+
+  const currentGuide = gradeGuides[guideKey(form.gradeCategory)] ?? gradeGuides['일반인']
 
   return (
-    <div style={{ maxWidth: 740, margin: '0 auto', padding: '2rem 1rem', fontFamily: 'sans-serif', color: '#222' }}>
+    <div
+      style={{
+        maxWidth: 480,
+        margin: '0 auto',
+        padding: '1.5rem 1rem',
+        fontFamily: 'sans-serif',
+        color: '#222',
+        fontSize: 13,
+      }}
+    >
+      <TopBar
+        onSave={() => alert('저장 기능은 준비 중입니다.')}
+        title="우리 아이 악필 탈출 3단계 핵심 가이드"
+        sub="뇌과학 기반 · 자세 교정 · 일상 실전 전략"
+      />
 
-      {/* 헤더 */}
-      <div style={{ marginBottom: '1.75rem' }}>
-        <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: PRIMARY }}>글씨교정 AI</h1>
-        <p style={{ fontSize: 13, color: '#999', margin: '5px 0 0' }}>뇌과학 · 자세 · 집필 통합 교정 솔루션 by pentwo</p>
-      </div>
-
-      {/* 선택 폼 */}
-      <div style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 14, padding: '1.5rem', marginBottom: '1rem', boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
-
+      <div
+        style={{
+          background: '#fff',
+          border: '0.5px solid rgba(0,0,0,0.1)',
+          borderRadius: 12,
+          padding: '1.25rem',
+          marginBottom: '1rem',
+          boxShadow: '0 1px 6px rgba(0,0,0,0.04)',
+        }}
+      >
         {/* 성별 */}
-        <div style={{ marginBottom: '1.25rem', textAlign: 'left' }}>
-          {label('성별')}
-          <div style={{ display: 'flex', gap: 8 }}>
-            {genders.map(g => (
-              <button key={g} onClick={() => setGender(g)} style={chip(gender === g)}>{g}</button>
-            ))}
-          </div>
-        </div>
+        <fieldset style={{ border: 'none', padding: 0, margin: '0 0 20px' }}>
+          <legend style={{ fontSize: 12, fontWeight: 600, color: '#444', marginBottom: 8, padding: 0, display: 'block' }}>
+            성별
+          </legend>
+          <PillSelector options={['남', '여']} selected={form.gender} onSelect={setGender} />
+        </fieldset>
 
         {/* 학년 */}
-        <div style={{ marginBottom: '1.25rem', textAlign: 'left' }}>
-          {label('학년 선택')}
-          {/* 대분류 가로 스크롤 */}
-          <div className="scroll-x-hidden" style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-            {gradeCategories.map(cat => (
-              <button key={cat} onClick={() => handleGradeCategory(cat)}
-                style={{ ...chip(gradeCategory === cat), flexShrink: 0 }}>{cat}</button>
-            ))}
-          </div>
-          {/* 세부 학년 가로 스크롤 */}
-          <div className="scroll-x-hidden" style={{ display: 'flex', gap: 8 }}>
-            {gradeMap[gradeCategory].map(g => (
-              <button key={g} onClick={() => setGrade(g)}
-                style={{ ...chip(grade === g), flexShrink: 0 }}>{g}</button>
-            ))}
-          </div>
-          {/* 현재 선택값 표시 */}
-          <div style={{ marginTop: 8, fontSize: 12, color: PRIMARY, fontWeight: 600 }}>
-            {gradeCategory} · {grade}
-          </div>
-        </div>
+        <fieldset style={{ border: 'none', padding: 0, margin: '0 0 20px' }}>
+          <legend style={{ fontSize: 12, fontWeight: 600, color: '#444', marginBottom: 8, padding: 0, display: 'block' }}>
+            학년 선택
+          </legend>
+          <GradeSelector
+            category={form.gradeCategory}
+            subGrade={form.subGrade}
+            onCategoryChange={setGradeCategory}
+            onSubGradeChange={setSubGrade}
+          />
+        </fieldset>
 
         {/* 글씨 유형 */}
-        <div style={{ marginBottom: '1.25rem', textAlign: 'left' }}>
-          {label('글씨 유형')}
-          <div style={{ display: 'flex', gap: 8 }}>
-            {types.map(t => (
-              <button key={t} onClick={() => setType(t)} style={chip(type === t)}>{t}</button>
-            ))}
-          </div>
-        </div>
+        <fieldset style={{ border: 'none', padding: 0, margin: '0 0 20px' }}>
+          <legend style={{ fontSize: 12, fontWeight: 600, color: '#444', marginBottom: 8, padding: 0, display: 'block' }}>
+            글씨 유형
+          </legend>
+          <PillSelector
+            options={['한글', '영어', '숫자']}
+            selected={form.scriptType}
+            onSelect={setScriptType}
+          />
+        </fieldset>
 
         {/* 교정 주제 */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          {label('교정 주제', `(최대 3개 · ${selectedTopics.length}/3 선택됨)`)}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {topics.map(t => {
-              const active = selectedTopics.includes(t)
-              const disabled = !active && selectedTopics.length >= 3
-              return (
-                <button key={t} onClick={() => !disabled && toggleTopic(t)} style={chip(active, disabled)}>{t}</button>
-              )
-            })}
-          </div>
-        </div>
+        <fieldset style={{ border: 'none', padding: 0, margin: '0 0 20px' }}>
+          <legend style={{ padding: 0, marginBottom: 8, display: 'block' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#444' }}>교정 주제</span>
+            <span style={{ fontSize: 11, color: '#999', marginLeft: 6 }}>
+              (최대 3개 · {form.topics.length}/3 선택됨)
+            </span>
+          </legend>
+          <TopicSelector selected={form.topics} onChange={setTopics} />
+        </fieldset>
 
-        {/* 주제별 사진 업로드 카드 */}
-        {selectedTopics.length > 0 && (
-          <div style={{ marginBottom: '1.5rem' }}>
-            {label('주제별 사진 업로드', '(선택 — 사진 첨부 시 더 정확한 분석)')}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
-              {selectedTopics.map(topic => (
-                <div key={topic} style={{
-                  border: `1.5px solid ${previews[topic] ? BORDER : '#e0e0e0'}`,
-                  borderRadius: 10, padding: '0.875rem', textAlign: 'center',
-                  background: previews[topic] ? LIGHT : '#fafafa'
-                }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: PRIMARY, marginBottom: 8 }}>{topic}</div>
-                  {previews[topic] ? (
-                    <>
-                      <img src={previews[topic]} alt={topic}
-                        style={{ width: '100%', height: 90, objectFit: 'cover', borderRadius: 6, marginBottom: 6 }} />
-                      <button onClick={() => fileRefs.current[topic]?.click()}
-                        style={{ fontSize: 11, color: '#888', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
-                        사진 변경
-                      </button>
-                    </>
-                  ) : (
-                    <button onClick={() => fileRefs.current[topic]?.click()}
-                      style={{ width: '100%', height: 80, background: '#fff', border: '1.5px dashed #ccc', borderRadius: 8, cursor: 'pointer', fontSize: 12, color: '#aaa' }}>
-                      📷 사진 선택
-                    </button>
-                  )}
-                  <input
-                    ref={el => { fileRefs.current[topic] = el }}
-                    type="file" accept="image/*" style={{ display: 'none' }}
-                    onChange={e => { const f = e.target.files?.[0]; if (f) handlePhoto(topic, f) }}
-                  />
-                </div>
+        {/* 사진 업로드 */}
+        {form.topics.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#444', marginBottom: 8 }}>
+              주제별 사진 업로드
+              <span style={{ fontSize: 11, color: '#999', fontWeight: 400, marginLeft: 6 }}>
+                (선택 — 첨부 시 더 정확한 분석)
+              </span>
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                gap: 10,
+              }}
+            >
+              {form.topics.map(topic => (
+                <PhotoUploadCard
+                  key={topic}
+                  topic={topic}
+                  preview={previews[topic]}
+                  onFile={file => handlePhoto(topic, file)}
+                />
               ))}
             </div>
           </div>
         )}
 
-        {/* 제출 버튼 */}
-        <button onClick={generate} disabled={loading || selectedTopics.length === 0}
-          style={{
-            width: '100%', padding: '14px', borderRadius: 10, border: 'none', fontSize: 15,
-            fontWeight: 700, cursor: loading || selectedTopics.length === 0 ? 'not-allowed' : 'pointer',
-            background: loading || selectedTopics.length === 0 ? '#bbb' : PRIMARY,
-            color: '#fff', letterSpacing: '0.3px', transition: 'background 0.2s'
-          }}>
-          {loading ? '✨ AI 분석 중...' : '✨ pentwo를 통해 교정하기'}
-        </button>
-        {selectedTopics.length === 0 && (
-          <p style={{ textAlign: 'center', fontSize: 12, color: '#bbb', margin: '8px 0 0' }}>교정 주제를 선택하면 버튼이 활성화됩니다</p>
+        {/* CTA 버튼 */}
+        <SubmitButton loading={loading} disabled={form.topics.length === 0} onClick={generate} />
+        {form.topics.length === 0 && (
+          <p style={{ textAlign: 'center', fontSize: 11, color: '#bbb', margin: '8px 0 0' }}>
+            교정 주제를 선택하면 버튼이 활성화됩니다
+          </p>
         )}
       </div>
 
-      {/* 결과 영역 */}
-      {result && (
-        <div style={{ background: '#fff', border: `1.5px solid ${BORDER}`, borderRadius: 14, padding: '1.5rem', boxShadow: '0 1px 6px rgba(83,74,183,0.08)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: PRIMARY }}>AI 교정 결과</div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => navigator.clipboard.writeText(fullText)}
-                style={{ padding: '5px 12px', background: LIGHT, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 12, color: PRIMARY, cursor: 'pointer' }}>복사</button>
-              <button onClick={() => window.print()}
-                style={{ padding: '5px 12px', background: LIGHT, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 12, color: PRIMARY, cursor: 'pointer' }}>인쇄</button>
-              <button onClick={generate}
-                style={{ padding: '5px 12px', background: PRIMARY, border: 'none', borderRadius: 6, fontSize: 12, color: '#fff', cursor: 'pointer' }}>재생성</button>
-            </div>
-          </div>
-
-          {/* 요약 태그 */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
-            {[gender, `${gradeCategory} · ${grade}`, type, ...selectedTopics].map(tag => (
-              <span key={tag} style={{ background: LIGHT, color: PRIMARY, padding: '3px 10px', borderRadius: 10, fontSize: 12, fontWeight: 500 }}>{tag}</span>
-            ))}
-          </div>
-
-          {/* 인트로 */}
-          {result.intro && (
-            <p style={{ fontSize: 13, color: '#555', lineHeight: 1.7, marginBottom: 16 }}>{result.intro}</p>
-          )}
-
-          {/* 주제별 섹션 카드 */}
-          {result.sections.map((sec, i) => (
-            <div key={i} style={{ background: LIGHT, borderRadius: 10, padding: '1rem 1.25rem', marginBottom: 12 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: PRIMARY, marginBottom: 8 }}>{sec.title}</div>
-              <pre style={{ fontSize: 13, color: '#3C3489', lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>{sec.body}</pre>
-            </div>
-          ))}
-
-          {/* 섹션 없이 전체 텍스트만 있을 때 */}
-          {result.sections.length === 0 && (
-            <pre style={{ fontSize: 13, color: '#3C3489', lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>{result.intro}</pre>
-          )}
+      {/* 결과 카드 */}
+      {showResult && (
+        <div ref={resultRef}>
+          <ResultCard
+            guide={currentGuide}
+            aiIntro={aiIntro}
+            onSave={() => alert('저장 기능은 준비 중입니다.')}
+            onRegenerate={generate}
+          />
         </div>
       )}
     </div>
