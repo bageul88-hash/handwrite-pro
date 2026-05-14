@@ -6,17 +6,15 @@ import ItemGrid from './ItemGrid'
 import CheckList from './CheckList'
 import TextBlock from './TextBlock'
 
-const PRIMARY = '#534AB7'
 const PRIMARY_BG = '#EEEDFE'
 const PRIMARY_TEXT = '#3C3489'
 
 interface ResultCardProps {
   guide: GradeGuide
   onSave?: () => void
-  onRegenerate?: () => void
 }
 
-export default function ResultCard({ guide, onSave, onRegenerate }: ResultCardProps) {
+export default function ResultCard({ guide, onSave }: ResultCardProps) {
   return (
     <div style={{ maxWidth: 480, margin: '0 auto' }}>
       <TopBar onSave={onSave} title={guide.pill} sub={guide.sub} />
@@ -65,46 +63,18 @@ export default function ResultCard({ guide, onSave, onRegenerate }: ResultCardPr
         <ItemGrid items={guide.step4.items} />
       </SectionCard>
 
-      {/* 각주 */}
       <div
         style={{
           background: 'rgba(0,0,0,0.02)',
           borderRadius: 8,
           padding: '10px 12px',
-          marginBottom: 12,
+          marginBottom: 24,
         }}
       >
-        <p
-          style={{
-            fontSize: 11,
-            color: '#888',
-            margin: 0,
-            fontStyle: 'italic',
-            lineHeight: 1.6,
-          }}
-        >
-          *교사·교정사 손 기술이 아니라, 아이의 뇌와 몸이 함께하는 변화를 배우는 성장 경험입니다.*
+        <p style={{ fontSize: 11, color: '#888', margin: 0, fontStyle: 'italic', lineHeight: 1.6 }}>
+          교사·교정사 손 기술이 아니라, 아이의 뇌와 몸이 함께하는 변화를 배우는 성장 경험입니다.
         </p>
       </div>
-
-      {onRegenerate && (
-        <button
-          onClick={onRegenerate}
-          style={{
-            width: '100%',
-            padding: '10px',
-            borderRadius: 10,
-            border: 'none',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: 'pointer',
-            background: PRIMARY_BG,
-            color: PRIMARY,
-          }}
-        >
-          재생성
-        </button>
-      )}
     </div>
   )
 }

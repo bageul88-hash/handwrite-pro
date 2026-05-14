@@ -5,11 +5,8 @@ import TopBar from './components/TopBar'
 import PillSelector from './components/PillSelector'
 import GradeSelector, { gradeMap } from './components/GradeSelector'
 import TopicSelector from './components/TopicSelector'
-import PhotoUploadCard from './components/PhotoUploadCard'
 import SubmitButton from './components/SubmitButton'
 import ResultCard from './components/ResultCard'
-
-const SERVER = 'https://handwrite-pro.onrender.com'
 
 function guideKey(cat: string): string {
   if (cat === '2차논술고사') return '2차논술'
@@ -22,7 +19,6 @@ interface FormState {
   subGrade: string
   scriptType: string
   topics: string[]
-  photos: Record<string, File>
 }
 
 export default function App() {
@@ -32,10 +28,7 @@ export default function App() {
     subGrade: '1학년',
     scriptType: '한글',
     topics: [],
-    photos: {},
   })
-  const [previews, setPreviews] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState(false)
   const [showResult, setShowResult] = useState(false)
   const resultRef = useRef<HTMLDivElement>(null)
 
@@ -48,53 +41,15 @@ export default function App() {
   }
 
   const setSubGrade = (sub: string) => setForm(f => ({ ...f, subGrade: sub }))
-
   const setScriptType = (t: string) => setForm(f => ({ ...f, scriptType: t }))
+  const setTopics = (topics: string[]) => setForm(f => ({ ...f, topics }))
 
-  const setTopics = (topics: string[]) => {
-    const removed = form.topics.filter(t => !topics.includes(t))
-    setForm(f => {
-      const newPhotos = { ...f.photos }
-      removed.forEach(t => delete newPhotos[t])
-      return { ...f, topics, photos: newPhotos }
-    })
-    if (removed.length > 0) {
-      setPreviews(p => {
-        const n = { ...p }
-        removed.forEach(t => delete n[t])
-        return n
-      })
-    }
-  }
-
-  const handlePhoto = (topic: string, file: File) => {
-    setForm(f => ({ ...f, photos: { ...f.photos, [topic]: file } }))
-    setPreviews(p => ({ ...p, [topic]: URL.createObjectURL(file) }))
-  }
-
-  const generate = async () => {
+  const showGuide = () => {
     if (form.topics.length === 0) {
       alert('교정 주제를 1개 이상 선택해주세요.')
       return
     }
-    setLoading(true)
-    setShowResult(false)
-    try {
-      const fd = new FormData()
-      fd.append('gender', form.gender)
-      fd.append('grade', `${form.gradeCategory} ${form.subGrade}`)
-      fd.append('type', form.scriptType)
-      form.topics.forEach(t => fd.append('topics', t))
-      form.topics.forEach(t => {
-        if (form.photos[t]) fd.append(`photo_${t}`, form.photos[t])
-      })
-      await fetch(`${SERVER}/generate`, { method: 'POST', body: fd })
-    } catch {
-      // 서버 실패 시 정적 가이드만 표시
-    } finally {
-      setLoading(false)
-      setShowResult(true)
-    }
+    setShowResult(true)
   }
 
   useEffect(() => {
@@ -176,36 +131,8 @@ export default function App() {
           <TopicSelector selected={form.topics} onChange={setTopics} />
         </fieldset>
 
-        {/* 사진 업로드 */}
-        {form.topics.length > 0 && (
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#444', marginBottom: 8 }}>
-              주제별 사진 업로드
-              <span style={{ fontSize: 11, color: '#999', fontWeight: 400, marginLeft: 6 }}>
-                (선택 — 첨부 시 더 정확한 분석)
-              </span>
-            </div>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-                gap: 10,
-              }}
-            >
-              {form.topics.map(topic => (
-                <PhotoUploadCard
-                  key={topic}
-                  topic={topic}
-                  preview={previews[topic]}
-                  onFile={file => handlePhoto(topic, file)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* CTA 버튼 */}
-        <SubmitButton loading={loading} disabled={form.topics.length === 0} onClick={generate} />
+        <SubmitButton disabled={form.topics.length === 0} onClick={showGuide} />
         {form.topics.length === 0 && (
           <p style={{ textAlign: 'center', fontSize: 11, color: '#bbb', margin: '8px 0 0' }}>
             교정 주제를 선택하면 버튼이 활성화됩니다
@@ -219,7 +146,6 @@ export default function App() {
           <ResultCard
             guide={currentGuide}
             onSave={() => alert('저장 기능은 준비 중입니다.')}
-            onRegenerate={generate}
           />
         </div>
       )}
