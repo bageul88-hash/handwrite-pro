@@ -9,43 +9,17 @@ import TextBlock from './TextBlock'
 const PRIMARY = '#534AB7'
 const PRIMARY_BG = '#EEEDFE'
 const PRIMARY_TEXT = '#3C3489'
-const BORDER = '#AFA9EC'
 
 interface ResultCardProps {
   guide: GradeGuide
-  aiIntro?: string
   onSave?: () => void
   onRegenerate?: () => void
 }
 
-export default function ResultCard({ guide, aiIntro, onSave, onRegenerate }: ResultCardProps) {
+export default function ResultCard({ guide, onSave, onRegenerate }: ResultCardProps) {
   return (
-    <div
-      style={{
-        background: '#fff',
-        border: `1.5px solid ${BORDER}`,
-        borderRadius: 12,
-        padding: '1.25rem',
-        boxShadow: '0 1px 6px rgba(83,74,183,0.08)',
-      }}
-    >
+    <div style={{ maxWidth: 480, margin: '0 auto' }}>
       <TopBar onSave={onSave} title={guide.pill} sub={guide.sub} />
-
-      {aiIntro && (
-        <p
-          style={{
-            fontSize: 13,
-            color: '#555',
-            lineHeight: 1.7,
-            marginBottom: 16,
-            borderLeft: `3px solid ${PRIMARY}`,
-            paddingLeft: 12,
-            margin: '0 0 16px',
-          }}
-        >
-          {aiIntro}
-        </p>
-      )}
 
       <SectionCard
         badge="1"
@@ -91,12 +65,13 @@ export default function ResultCard({ guide, aiIntro, onSave, onRegenerate }: Res
         <ItemGrid items={guide.step4.items} />
       </SectionCard>
 
+      {/* 각주 */}
       <div
         style={{
           background: 'rgba(0,0,0,0.02)',
           borderRadius: 8,
-          padding: '10px 14px',
-          marginTop: 4,
+          padding: '10px 12px',
+          marginBottom: 12,
         }}
       >
         <p
@@ -117,7 +92,6 @@ export default function ResultCard({ guide, aiIntro, onSave, onRegenerate }: Res
           onClick={onRegenerate}
           style={{
             width: '100%',
-            marginTop: 12,
             padding: '10px',
             borderRadius: 10,
             border: 'none',

@@ -36,7 +36,6 @@ export default function App() {
   })
   const [previews, setPreviews] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
-  const [aiIntro, setAiIntro] = useState<string | undefined>(undefined)
   const [showResult, setShowResult] = useState(false)
   const resultRef = useRef<HTMLDivElement>(null)
 
@@ -80,7 +79,6 @@ export default function App() {
     }
     setLoading(true)
     setShowResult(false)
-    setAiIntro(undefined)
     try {
       const fd = new FormData()
       fd.append('gender', form.gender)
@@ -90,14 +88,7 @@ export default function App() {
       form.topics.forEach(t => {
         if (form.photos[t]) fd.append(`photo_${t}`, form.photos[t])
       })
-      const res = await fetch(`${SERVER}/generate`, { method: 'POST', body: fd })
-      const data = await res.json()
-      if (data.success) {
-        const firstLine = (data.content as string)
-          .split('\n')
-          .find((l: string) => l.trim() && !l.startsWith('#'))
-        setAiIntro(firstLine?.trim() ?? undefined)
-      }
+      await fetch(`${SERVER}/generate`, { method: 'POST', body: fd })
     } catch {
       // 서버 실패 시 정적 가이드만 표시
     } finally {
@@ -227,7 +218,6 @@ export default function App() {
         <div ref={resultRef}>
           <ResultCard
             guide={currentGuide}
-            aiIntro={aiIntro}
             onSave={() => alert('저장 기능은 준비 중입니다.')}
             onRegenerate={generate}
           />

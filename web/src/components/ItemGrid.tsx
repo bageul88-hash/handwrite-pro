@@ -14,7 +14,7 @@ export default function ItemGrid({ items }: ItemGridProps) {
           style={{
             background: 'rgba(0,0,0,0.03)',
             borderRadius: 8,
-            padding: '10px 12px',
+            padding: '8px 10px',
           }}
         >
           <div style={{ fontSize: 12, fontWeight: 600, color: '#333', marginBottom: 4 }}>

@@ -30,7 +30,7 @@ export default function CheckList({ items }: CheckListProps) {
           >
             {item.ok ? '✓' : '⚠'}
           </span>
-          <span style={{ fontSize: 13, color: '#444', lineHeight: 1.5 }}>{item.text}</span>
+          <span style={{ fontSize: 11, color: '#444', lineHeight: 1.5 }}>{item.text}</span>
         </div>
       ))}
     </div>
