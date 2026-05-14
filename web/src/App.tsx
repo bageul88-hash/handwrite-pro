@@ -6,7 +6,16 @@ const LIGHT = '#EEEDFE'
 const BORDER = '#AFA9EC'
 
 const genders = ['남', '여']
-const grades = ['6-7세', '초1-2', '초3-4', '초5-6', '중등', '성인', '2차 준졸고사']
+const gradeMap: Record<string, string[]> = {
+  '유치원':      ['5세(만3세)', '6세(만4세)', '7세(만5세)'],
+  '초등':        ['초1', '초2', '초3', '초4', '초5', '초6'],
+  '중등':        ['중1', '중2', '중3'],
+  '고등':        ['고1', '고2', '고3'],
+  '대학':        ['대학1년', '대학2년', '대학3년', '대학4년'],
+  '일반인':      ['20대', '30대', '40대', '50대', '60대 이상'],
+  '2차 논술고사': ['준비 시작', '6개월 이내', '시험 임박'],
+}
+const gradeCategories = Object.keys(gradeMap)
 const types = ['한글', '영어', '숫자']
 const topics = ['악필 교정', '집필 자세', '손목·팔뚝', '허리·어깨', '뇌과학', '손 촉각']
 
@@ -47,7 +56,8 @@ function parseResult(text: string) {
 
 export default function App() {
   const [gender, setGender] = useState('남')
-  const [grade, setGrade] = useState('초1-2')
+  const [gradeCategory, setGradeCategory] = useState('초등')
+  const [grade, setGrade] = useState('초1')
   const [type, setType] = useState('한글')
   const [selectedTopics, setSelectedTopics] = useState<string[]>([])
   const [photos, setPhotos] = useState<Record<string, File>>({})
@@ -55,6 +65,11 @@ export default function App() {
   const [result, setResult] = useState<{ intro: string; sections: { title: string; body: string }[] } | null>(null)
   const [loading, setLoading] = useState(false)
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({})
+
+  const handleGradeCategory = (cat: string) => {
+    setGradeCategory(cat)
+    setGrade(gradeMap[cat][0])
+  }
 
   const toggleTopic = (t: string) => {
     setSelectedTopics(prev => {
@@ -81,7 +96,7 @@ export default function App() {
     try {
       const form = new FormData()
       form.append('gender', gender)
-      form.append('grade', grade)
+      form.append('grade', `${gradeCategory} ${grade}`)
       form.append('type', type)
       selectedTopics.forEach(t => form.append('topics', t))
       selectedTopics.forEach(t => { if (photos[t]) form.append(`photo_${t}`, photos[t]) })
@@ -123,10 +138,23 @@ export default function App() {
         {/* 학년 */}
         <div style={{ marginBottom: '1.25rem', textAlign: 'left' }}>
           {label('학년 선택')}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {grades.map(g => (
-              <button key={g} onClick={() => setGrade(g)} style={chip(grade === g)}>{g}</button>
+          {/* 대분류 가로 스크롤 */}
+          <div className="scroll-x-hidden" style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            {gradeCategories.map(cat => (
+              <button key={cat} onClick={() => handleGradeCategory(cat)}
+                style={{ ...chip(gradeCategory === cat), flexShrink: 0 }}>{cat}</button>
             ))}
+          </div>
+          {/* 세부 학년 가로 스크롤 */}
+          <div className="scroll-x-hidden" style={{ display: 'flex', gap: 8 }}>
+            {gradeMap[gradeCategory].map(g => (
+              <button key={g} onClick={() => setGrade(g)}
+                style={{ ...chip(grade === g), flexShrink: 0 }}>{g}</button>
+            ))}
+          </div>
+          {/* 현재 선택값 표시 */}
+          <div style={{ marginTop: 8, fontSize: 12, color: PRIMARY, fontWeight: 600 }}>
+            {gradeCategory} · {grade}
           </div>
         </div>
 
@@ -224,7 +252,7 @@ export default function App() {
 
           {/* 요약 태그 */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
-            {[gender, grade, type, ...selectedTopics].map(tag => (
+            {[gender, `${gradeCategory} · ${grade}`, type, ...selectedTopics].map(tag => (
               <span key={tag} style={{ background: LIGHT, color: PRIMARY, padding: '3px 10px', borderRadius: 10, fontSize: 12, fontWeight: 500 }}>{tag}</span>
             ))}
           </div>
