@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 
 const menuItems = [
   { id: 'dashboard', label: '대시보드', icon: '📊' },
@@ -32,15 +32,6 @@ const recentContents = [
 
 export default function App() {
   const [activeMenu, setActiveMenu] = useState('dashboard')
-  const [prompt, setPrompt] = useState(`당신은 글씨교정 전문가이자 뇌과학 전문가입니다.
-{grade} 학생의 {type} 글씨에서 나타나는 [{topics}] 문제를
-{audience}에게 아래 구조로 한국어로 작성해주세요.
-
-1. 문제 원인 분석
-2. 뇌과학적 근거 (해마·대뇌피질·소뇌)
-3. 신체 자세 교정 (손목/팔뚝/어깨/허리/목/다리)
-4. 구체적 해결 방법
-5. 학부형 실천 가이드`)
 
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: 'sans-serif', background: '#f5f5f5' }}>
@@ -145,40 +136,7 @@ export default function App() {
 
         {/* AI 프롬프트 관리 */}
         {activeMenu === 'prompts' && (
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 600, marginBottom: '1.25rem', color: '#1e1e2e' }}>AI 프롬프트 관리</div>
-            <div style={{ background: '#fff', borderRadius: 12, padding: '1.25rem', border: '1px solid #eee' }}>
-              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: '0.75rem' }}>기본 프롬프트 편집</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                {['{grade}', '{type}', '{topics}', '{audience}'].map(v => (
-                  <span key={v} style={{ background: '#EEEDFE', color: '#534AB7', padding: '3px 10px', borderRadius: 6, fontSize: 12 }}>{v}</span>
-                ))}
-              </div>
-              <textarea value={prompt} onChange={e => setPrompt(e.target.value)}
-                style={{ width: '100%', height: 200, padding: 12, borderRadius: 8, border: '1px solid #ddd',
-                  fontFamily: 'monospace', fontSize: 13, resize: 'vertical', lineHeight: 1.6 }} />
-              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                <button onClick={async () => {
-                  try {
-                    const res = await fetch('https://handwrite-pro.onrender.com/admin/prompt', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ prompt })
-                    })
-                    const data = await res.json()
-                    if (data.success) alert('✅ 저장 완료!')
-                    else alert('❌ 저장 실패: ' + data.error)
-                  } catch { alert('❌ 서버 연결 실패') }
-                }} style={{ padding: '8px 16px', background: '#534AB7', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
-                  저장하기
-                </button>
-                
-                <button style={{ padding: '8px 16px', background: '#f5f5f5', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
-                  테스트
-                </button>
-              </div>
-            </div>
-          </div>
+          <PromptManager />
         )}
 
         {/* 매출 통계 */}
@@ -299,6 +257,267 @@ export default function App() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ─── AI 프롬프트 관리 ────────────────────────────────────────────────────────
+
+function PromptManager() {
+  const SERVER = 'https://handwrite-pro.onrender.com'
+
+  const DEFAULT_PROMPT = `당신은 글씨교정 전문가이자 뇌과학 전문가입니다.
+{grade} 학생의 {type} 글씨에서 나타나는 [{topics}] 문제를
+{audience}에게 아래 구조로 한국어로 작성해주세요.
+
+1. 문제 원인 분석
+2. 뇌과학적 근거 (해마·대뇌피질·소뇌)
+3. 신체 자세 교정 (손목/팔뚝/어깨/허리/목/다리)
+4. 구체적 해결 방법
+5. 학부형 실천 가이드`
+
+  const [prompt, setPrompt] = useState(DEFAULT_PROMPT)
+  const [savedMsg, setSavedMsg] = useState('')
+  const [showTest, setShowTest] = useState(false)
+  const [grade, setGrade] = useState('초3-4')
+  const [type, setType] = useState('악필')
+  const [topics, setTopics] = useState('글씨 크기 불균형, 획 순서 오류')
+  const [audience, setAudience] = useState('학부모')
+  const [loading, setLoading] = useState(false)
+  const [report, setReport] = useState<any>(null)
+  const [error, setError] = useState('')
+
+  const insertTag = (tag: string) => {
+    const ta = document.getElementById('promptTa') as HTMLTextAreaElement
+    if (!ta) return
+    const s = ta.selectionStart, e = ta.selectionEnd
+    setPrompt(prompt.slice(0, s) + tag + prompt.slice(e))
+    setTimeout(() => { ta.selectionStart = ta.selectionEnd = s + tag.length; ta.focus() }, 0)
+  }
+
+  const savePrompt = async () => {
+    try {
+      const res = await fetch(`${SERVER}/admin/prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      })
+      const data = await res.json()
+      setSavedMsg(data.success ? '✓ 저장되었습니다' : '❌ 저장 실패')
+      setTimeout(() => setSavedMsg(''), 2500)
+    } catch {
+      setSavedMsg('❌ 서버 연결 실패')
+      setTimeout(() => setSavedMsg(''), 2500)
+    }
+  }
+
+  const runTest = async () => {
+    setLoading(true); setReport(null); setError('')
+    try {
+      const res = await fetch(`${SERVER}/admin/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grade, type, topics, audience })
+      })
+      const data = await res.json()
+      if (data.success) setReport(data.data)
+      else setError(data.error || '오류 발생')
+    } catch(e: any) { setError(e.message) }
+    setLoading(false)
+  }
+
+  const card: React.CSSProperties = { background: '#fff', borderRadius: 12, padding: '1.25rem', border: '1px solid #eee', marginBottom: '1rem' }
+
+  return (
+    <div>
+      <div style={{ fontSize: 20, fontWeight: 600, marginBottom: '1.25rem', color: '#1e1e2e' }}>AI 프롬프트 관리</div>
+
+      {/* 프롬프트 편집 */}
+      <div style={card}>
+        <div style={{ fontSize: 14, fontWeight: 600, textAlign: 'center', marginBottom: '0.75rem' }}>기본 프롬프트 편집</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 10 }}>
+          {['{grade}', '{type}', '{topics}', '{audience}'].map(v => (
+            <button key={v} onClick={() => insertTag(v)}
+              style={{ background: '#EEEDFE', color: '#534AB7', border: 'none', borderRadius: 20, padding: '3px 12px', fontSize: 12, cursor: 'pointer' }}>
+              {v}
+            </button>
+          ))}
+        </div>
+        <textarea id="promptTa" value={prompt} onChange={e => setPrompt(e.target.value)}
+          style={{ width: '100%', minHeight: 200, padding: 12, borderRadius: 8, border: '1.5px solid #ddd', fontFamily: 'monospace', fontSize: 13, resize: 'vertical', lineHeight: 1.7, boxSizing: 'border-box' }} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+          <button onClick={savePrompt}
+            style={{ padding: '9px 20px', background: '#534AB7', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+            저장하기
+          </button>
+          <button onClick={() => setShowTest(!showTest)}
+            style={{ padding: '9px 20px', background: '#f5f5f5', border: '1px solid #ddd', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>
+            테스트
+          </button>
+          {savedMsg && <span style={{ fontSize: 12, color: savedMsg.startsWith('✓') ? '#1D9E75' : '#E24B4A' }}>{savedMsg}</span>}
+        </div>
+      </div>
+
+      {/* 테스트 패널 */}
+      {showTest && (
+        <div style={card}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: '0.75rem' }}>테스트 실행</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: '1rem' }}>
+            {[
+              { label: '{grade} 학년', type: 'select', value: grade, setter: setGrade, options: ['초1-2', '초3-4', '초5-6', '중학교 1학년'] },
+              { label: '{type} 유형', type: 'select', value: type, setter: setType, options: ['악필', '받아쓰기', '수학 노트', '영어 필기'] },
+              { label: '{topics} 문제', type: 'input', value: topics, setter: setTopics },
+              { label: '{audience} 대상', type: 'select', value: audience, setter: setAudience, options: ['학부모', '담임 선생님', '학생 본인'] },
+            ].map(f => (
+              <div key={f.label}>
+                <label style={{ fontSize: 12, color: '#888', display: 'block', marginBottom: 4 }}>{f.label}</label>
+                {f.type === 'select' ? (
+                  <select value={f.value} onChange={e => f.setter(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #ddd', fontSize: 13 }}>
+                    {(f.options || []).map(o => <option key={o}>{o}</option>)}
+                  </select>
+                ) : (
+                  <input value={f.value} onChange={e => f.setter(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #ddd', fontSize: 13 }} />
+                )}
+              </div>
+            ))}
+          </div>
+          <button onClick={runTest} disabled={loading}
+            style={{ padding: '9px 20px', background: loading ? '#aaa' : '#534AB7', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: loading ? 'not-allowed' : 'pointer' }}>
+            {loading ? '⏳ AI 분석 중...' : 'AI 분석 실행'}
+          </button>
+          {error && (
+            <div style={{ marginTop: 10, background: '#fff5f5', border: '1px solid #fbc0c0', borderRadius: 8, padding: 12, color: '#c0392b', fontSize: 13 }}>
+              {error}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 리포트 렌더링 */}
+      {report && <ReportView data={report} />}
+    </div>
+  )
+}
+
+// ─── 리포트 뷰 ──────────────────────────────────────────────────────────────
+
+function ReportView({ data }: { data: any }) {
+  const card: React.CSSProperties = { background: '#fff', border: '1px solid #e2dfef', borderRadius: 14, marginBottom: '1rem', overflow: 'hidden' }
+  const secHeader: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid #eee' }
+  const numBadge: React.CSSProperties = { width: 26, height: 26, borderRadius: '50%', background: '#534AB7', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, lineHeight: '1' }
+  const body: React.CSSProperties = { padding: '16px 18px' }
+  const infoBox: React.CSSProperties = { background: '#f8f7ff', borderLeft: '3px solid #534AB7', borderRadius: '0 8px 8px 0', padding: '10px 14px', fontSize: 13, lineHeight: 1.75, color: '#3a3660', marginBottom: 14 }
+  const th: React.CSSProperties = { background: '#f2f0ff', color: '#534AB7', fontWeight: 600, padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid #e2dfef', fontSize: 13 }
+  const td: React.CSSProperties = { padding: '8px 12px', borderBottom: '1px solid #f0eff8', fontSize: 13 }
+
+  return (
+    <div style={{ animation: 'fadeIn .4s ease' }}>
+      <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}`}</style>
+
+      {/* 헤더 */}
+      <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: '#1e1e2e', marginBottom: 4 }}>{data.reportTitle}</div>
+        <div style={{ fontSize: 13, color: '#888' }}>{data.reportSub}</div>
+      </div>
+
+      {/* 섹션 1 — 원인과 뇌과학 */}
+      <div style={card}>
+        <div style={secHeader}>
+          <div style={numBadge}>1</div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>{data.section1?.title}</div>
+        </div>
+        <div style={body}>
+          <div style={infoBox}>{data.section1?.intro}</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={th}>구분</th>
+                <th style={th}>주요 특징</th>
+                <th style={th}>뇌과학적 의미</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data.section1?.table || []).map((r: any, i: number) => (
+                <tr key={i}>
+                  <td style={td}>{r.category}</td>
+                  <td style={td}>{r.features}</td>
+                  <td style={{ ...td, color: '#7b7899', fontSize: 12 }}>{r.brain}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 섹션 2 — 자세 체크포인트 */}
+      <div style={card}>
+        <div style={secHeader}>
+          <div style={numBadge}>2</div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>{data.section2?.title}</div>
+        </div>
+        <div style={body}>
+          <p style={{ fontSize: 13, color: '#888', marginBottom: 14, lineHeight: 1.7 }}>{data.section2?.intro}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            {(data.section2?.checkpoints || []).map((c: any, i: number) => (
+              <div key={i} style={{ border: '1px solid #e2dfef', borderRadius: 10, padding: 12, textAlign: 'center' }}>
+                <div style={{ fontSize: 22, marginBottom: 6 }}>{c.icon}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#1e1e2e', marginBottom: 4 }}>{c.name}</div>
+                <div style={{ fontSize: 11, color: '#888', lineHeight: 1.5 }}>{c.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 섹션 3 — Daily Solution */}
+      <div style={card}>
+        <div style={secHeader}>
+          <div style={numBadge}>3</div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>{data.section3?.title}</div>
+        </div>
+        <div style={body}>
+          {/* 훈련 2열 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+            {[
+              { title: data.section3?.motorTitle, items: data.section3?.motorItems },
+              { title: data.section3?.spaceTitle,  items: data.section3?.spaceItems },
+            ].map((box, i) => (
+              <div key={i} style={{ border: '1px solid #e2dfef', borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#534AB7', marginBottom: 8 }}>{box.title}</div>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  {(box.items || []).map((item: string, j: number) => (
+                    <li key={j} style={{ fontSize: 12, color: '#1e1e2e', lineHeight: 1.8, paddingLeft: 10, position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 0, color: '#534AB7' }}>•</span>{item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+
+          {/* 학부모 실천 수칙 */}
+          <div style={{ background: '#fffbf0', border: '1px solid #f0d896', borderRadius: 10, padding: 14, marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#b8860b', marginBottom: 10 }}>♡ {data.section3?.parentTitle}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {(data.section3?.parentItems || []).map((p: any, i: number) => (
+                <div key={i} style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 3 }}>{p.label}</div>
+                  <div style={{ fontSize: 11, color: '#7a5c00', fontWeight: 600, lineHeight: 1.4 }}>{p.val}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 인용 */}
+          {data.section3?.quote && (
+            <div style={{ background: '#f8f7ff', borderRadius: 10, padding: '14px 18px', fontSize: 13, fontStyle: 'italic', color: '#4a4680', lineHeight: 1.8, borderLeft: '3px solid #534AB7' }}>
+              "{data.section3.quote}"
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

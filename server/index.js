@@ -4,6 +4,7 @@ const cors = require('cors')
 const mongoose = require('mongoose')
 const multer = require('multer')
 const { GoogleGenerativeAI } = require('@google/generative-ai')
+const Anthropic = require('@anthropic-ai/sdk')
 
 const app = express()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
@@ -12,7 +13,10 @@ const corsOptions = {
   origin: (origin, callback) => {
     if (!origin || origin.endsWith('.vercel.app') ||
         origin === 'https://handwrite-pro.onrender.com' ||
-        origin === 'https://handwrite-pro-production.up.railway.app') {
+        origin === 'https://handwrite-pro-production.up.railway.app' ||
+        origin === 'http://localhost:5173' ||
+        origin === 'http://localhost:5174' ||
+        origin === 'http://localhost:5175') {
       callback(null, true)
     } else {
       callback(new Error('Not allowed by CORS'))
@@ -41,6 +45,7 @@ const promptSchema = new mongoose.Schema({
 const Prompt = mongoose.model('Prompt', promptSchema)
 
 const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 app.get('/', (req, res) => {
   res.json({ message: '글씨교정 AI 서버 작동 중!' })
@@ -114,6 +119,92 @@ app.post('/admin/prompt', async (req, res) => {
     res.json({ success: true, message: '프롬프트 저장 완료!' })
   } catch(e) {
     res.status(500).json({ success: false, error: 'DB 저장 실패: ' + e.message })
+  }
+})
+
+// 관리자 전용 — Claude API, JSON 구조 응답
+app.post('/admin/generate', async (req, res) => {
+  const { grade, type, topics, audience = '학부모' } = req.body
+
+  if (!grade || !type || !topics) {
+    return res.status(400).json({ success: false, error: '필수 항목 누락' })
+  }
+
+  let promptTemplate = `당신은 글씨교정 전문가이자 뇌과학 전문가입니다.
+{grade} 학생의 {type} 글씨에서 나타나는 [{topics}] 문제를 {audience}에게 분석해 주세요.`
+
+  if (mongoConnected) {
+    try {
+      const saved = await Prompt.findOne({ key: 'main' })
+      if (saved?.content) promptTemplate = saved.content
+    } catch(e) {}
+  }
+
+  const userPrompt = promptTemplate
+    .replace(/\{grade\}/g, grade)
+    .replace(/\{type\}/g, type)
+    .replace(/\{topics\}/g, Array.isArray(topics) ? topics.join(', ') : topics)
+    .replace(/\{audience\}/g, audience)
+
+  const finalPrompt = userPrompt + `
+
+반드시 아래 JSON 형식으로만 응답하세요. 마크다운 코드블록(백틱) 없이 순수 JSON만 출력하세요.
+
+{
+  "reportTitle": "우리 아이 악필 탈출 3단계 요약",
+  "reportSub": "${grade} · 악필 교정 분석 결과",
+  "section1": {
+    "title": "원인과 뇌과학적 원리",
+    "intro": "글씨가 불규칙한 이유를 뇌과학적으로 설명하는 2~3문장",
+    "table": [
+      {"category": "불규칙", "features": "주요 특징 설명", "brain": "뇌과학적 의미"},
+      {"category": "불안정", "features": "주요 특징 설명", "brain": "뇌과학적 의미"},
+      {"category": "미숙함", "features": "주요 특징 설명", "brain": "뇌과학적 의미"}
+    ]
+  },
+  "section2": {
+    "title": "신체 자세 바로잡기 — 6대 체크포인트",
+    "intro": "바른 자세에 대한 한 줄 설명",
+    "checkpoints": [
+      {"icon": "✋", "name": "손목", "desc": "구체적 자세 설명"},
+      {"icon": "💪", "name": "팔꿈치", "desc": "구체적 자세 설명"},
+      {"icon": "🙆", "name": "어깨", "desc": "구체적 자세 설명"},
+      {"icon": "🧘", "name": "허리", "desc": "구체적 자세 설명"},
+      {"icon": "👁", "name": "목", "desc": "구체적 자세 설명"},
+      {"icon": "🦵", "name": "다리", "desc": "구체적 자세 설명"}
+    ]
+  },
+  "section3": {
+    "title": "구체적인 해결 전략 — Daily Solution",
+    "motorTitle": "✏ 필기구 및 소근육 훈련",
+    "motorItems": ["훈련 항목 1", "훈련 항목 2", "훈련 항목 3"],
+    "spaceTitle": "⣿ 공간 및 형태 훈련",
+    "spaceItems": ["훈련 항목 1", "훈련 항목 2", "훈련 항목 3"],
+    "parentTitle": "학부모님을 위한 실천 수칙",
+    "parentItems": [
+      {"label": "시간", "val": "구체적 내용"},
+      {"label": "칭찬", "val": "구체적 내용"},
+      {"label": "과정", "val": "구체적 내용"},
+      {"label": "안내", "val": "구체적 내용"}
+    ],
+    "quote": "핵심 인용 문장"
+  }
+}`
+
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: finalPrompt }]
+    })
+
+    let raw = message.content[0].text
+    raw = raw.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(raw)
+    res.json({ success: true, data: parsed })
+  } catch(e) {
+    console.error('Claude API 오류:', e.message)
+    res.status(500).json({ success: false, error: e.message })
   }
 })
 
